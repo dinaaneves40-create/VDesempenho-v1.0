@@ -1,63 +1,41 @@
 name: Gerar APK
 
 on:
-  workflow_dispatch:
   push:
     branches:
       - main
+  workflow_dispatch:
 
 jobs:
   build:
+    name: Build APK
     runs-on: ubuntu-22.04
 
     steps:
 
-      # ==========================================
-      # BAIXAR O PROJETO
-      # ==========================================
       - name: Baixar projeto
         uses: actions/checkout@v4
 
-      # ==========================================
-      # DEPENDÊNCIAS PARA ANDROID ANTIGO
-      # ==========================================
-      - name: Instalar dependências
-        run: |
-          sudo dpkg --add-architecture i386
-          sudo apt-get update
-
-          sudo apt-get install -y \
-            unzip \
-            wget \
-            libc6:i386 \
-            libstdc++6:i386 \
-            zlib1g:i386
-
-      # ==========================================
-      # JAVA 17
-      # Necessário apenas para preparar o SDK
-      # ==========================================
-      - name: Configurar Java 17
+      - name: Configurar Java 8
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: '8'
 
-      # ==========================================
-      # CONFIGURAR ANDROID SDK
-      # ==========================================
+      - name: Verificar Java
+        run: |
+          echo "JAVA_HOME=$JAVA_HOME"
+          java -version
+          javac -version
+
       - name: Configurar Android SDK
         run: |
           echo "ANDROID_HOME=$ANDROID_HOME" >> "$GITHUB_ENV"
           echo "ANDROID_SDK_ROOT=$ANDROID_HOME" >> "$GITHUB_ENV"
 
-          echo "$ANDROID_HOME/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
           echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
+          echo "$ANDROID_HOME/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
 
-      # ==========================================
-      # INSTALAR SDK ANDROID 21
-      # E BUILD TOOLS 23.0.3
-      # ==========================================
       - name: Instalar Android SDK
         run: |
           yes | sdkmanager --licenses || true
@@ -67,26 +45,11 @@ jobs:
             "platforms;android-21" \
             "build-tools;23.0.3"
 
-      # ==========================================
-      # JAVA 8 PARA O PROJETO ANTIGO
-      # ==========================================
-      - name: Configurar Java 8
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '8'
-
-      # ==========================================
-      # VERIFICAR JAVA
-      # ==========================================
-      - name: Verificar Java
+      - name: Verificar Android SDK
         run: |
-          echo "JAVA_HOME=$JAVA_HOME"
-          java -version
+          sdkmanager --list | head -80
+          "$ANDROID_HOME/build-tools/23.0.3/aapt" version
 
-      # ==========================================
-      # DESCOMPACTAR VALSCREEN
-      # ==========================================
       - name: Descompactar ValScreen
         run: |
           rm -rf projeto
@@ -94,12 +57,16 @@ jobs:
 
           unzip -q ValScreen.zip -d projeto
 
-          echo "Estrutura do projeto:"
+          echo "===== ESTRUTURA DO PROJETO ====="
           find projeto -maxdepth 4 -type f | head -100
 
-      # ==========================================
-      # INSTALAR GRADLE 2.14.1
-      # ==========================================
+      - name: Configurar local.properties
+        run: |
+          echo "sdk.dir=$ANDROID_HOME" > projeto/ValScreen/local.properties
+
+          echo "===== local.properties ====="
+          cat projeto/ValScreen/local.properties
+
       - name: Instalar Gradle 2.14.1
         run: |
           cd "$RUNNER_TEMP"
@@ -113,36 +80,75 @@ jobs:
 
           echo "$RUNNER_TEMP/gradle-2.14.1/bin" >> "$GITHUB_PATH"
 
-      # ==========================================
-      # DEFINIR BUILD TOOLS
-      # ==========================================
-      - name: Definir Android Build Tools
+      - name: Verificar Gradle
         run: |
-          echo "ANDROID_HOME=$ANDROID_HOME"
-          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
-
-          echo "$ANDROID_HOME/build-tools/23.0.3" >> "$GITHUB_PATH"
-
-          echo "sdk.dir=$ANDROID_HOME" > projeto/ValScreen/local.properties
-
-      # ==========================================
-      # VERIFICAR AMBIENTE
-      # ==========================================
-      - name: Verificar ambiente
-        working-directory: projeto/ValScreen
-        run: |
-          echo "===== JAVA ====="
-          java -version
-
-          echo "===== GRADLE ====="
           gradle --version
 
-          echo "===== AAPT ====="
-          "$ANDROID_HOME/build-tools/23.0.3/aapt" version
+      - name: Compilar APK
+        working-directory: projeto/ValScreen
+        run: |
+          echo "===== INICIANDO COMPILAÇÃO ====="
 
-          echo "===== SDK ====="
-          ls "$ANDROID_HOME/platforms/android-21"
+          if [ -f "./gradlew" ]; then
+            chmod +x ./gradlew
+            ./gradlew clean assembleRelease --no-daemon
+          else
+            gradle clean assembleRelease --no-daemon
+          fi
 
-      # ==========================================
-      # COMPILAR APK
-      # =================================
+          echo "===== COMPILAÇÃO TERMINADA ====="
+
+      - name: Procurar APK
+        run: |
+          echo "===== PROCURANDO APK ====="
+
+          APK=$(find projeto/ValScreen \
+            -type f \
+            -name "*.apk" \
+            -print -quit)
+
+          if [ -z "$APK" ]; then
+            echo "ERRO: APK não encontrado!"
+            echo ""
+            echo "Arquivos encontrados:"
+            find projeto/ValScreen -type f | grep -E "\.apk$|build/outputs" || true
+            exit 1
+          fi
+
+          echo "APK encontrado:"
+          echo "$APK"
+
+          mkdir -p apk-final
+
+          cp "$APK" apk-final/VDesempenho-v1.0.apk
+
+          echo ""
+          echo "===== APK FINAL ====="
+          ls -lh apk-final/VDesempenho-v1.0.apk
+
+      - name: Verificar APK
+        run: |
+          if [ ! -f "apk-final/VDesempenho-v1.0.apk" ]; then
+            echo "ERRO: arquivo APK não existe!"
+            exit 1
+          fi
+
+          echo "APK confirmado:"
+          file apk-final/VDesempenho-v1.0.apk
+          ls -lh apk-final/VDesempenho-v1.0.apk
+
+      - name: Guardar APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: VDesempenho-v1.0
+          path: apk-final/VDesempenho-v1.0.apk
+          if-no-files-found: error
+
+      - name: Finalizado
+        run: |
+          echo "======================================"
+          echo "       APK GERADO COM SUCESSO!"
+          echo "======================================"
+          echo ""
+          echo "Arquivo:"
+          ls -lh apk-final/VDesempenho-v1.0.apk
