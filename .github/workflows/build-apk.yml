@@ -109,4 +109,34 @@ jobs:
       # ---------------------------------------------------------
       # Compilar APK
       # ---------------------------------------------------------
-      -
+      - name: Compilar APK
+        working-directory: projeto/ValScreen
+        run: |
+          chmod +x gradlew 2>/dev/null || true
+
+          if [ -f "./gradlew" ]; then
+            ./gradlew assembleRelease --no-daemon --stacktrace
+          else
+            gradle assembleRelease --no-daemon --stacktrace
+          fi
+
+      # ---------------------------------------------------------
+      # Procurar o APK gerado
+      # ---------------------------------------------------------
+      - name: Procurar APK
+        if: success()
+        run: |
+          echo "APKs encontrados:"
+          find projeto/ValScreen -type f -name "*.apk" -print
+
+      # ---------------------------------------------------------
+      # Guardar APK como artefato
+      # ---------------------------------------------------------
+      - name: Guardar APK
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: VDesempenho-v1.0
+          path: |
+            projeto/ValScreen/**/build/outputs/apk/**/*.apk
+          if-no-files-found: error
