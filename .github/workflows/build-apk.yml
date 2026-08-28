@@ -2,19 +2,24 @@ name: Gerar APK
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - main
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
 
     steps:
-      - name: Baixar arquivos
+      - name: Baixar projeto
         uses: actions/checkout@v4
 
-      - name: Descompactar projeto
+      - name: Descompactar ValScreen
         run: |
+          rm -rf projeto
+          mkdir projeto
           unzip -q ValScreen.zip -d projeto
-          echo "Conteúdo:"
+          echo "Arquivos encontrados:"
           find projeto -maxdepth 3 -type f | head -100
 
       - name: Configurar Java
@@ -26,7 +31,7 @@ jobs:
       - name: Configurar Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Instalar SDK Android
+      - name: Instalar Android SDK
         run: |
           yes | sdkmanager --licenses || true
           sdkmanager "platforms;android-21" "build-tools;21.1.0"
@@ -35,11 +40,12 @@ jobs:
         run: |
           wget -q https://services.gradle.org/distributions/gradle-2.14.1-bin.zip
           unzip -q gradle-2.14.1-bin.zip
-          echo "$PWD/gradle-2.14.1/bin" >> $GITHUB_PATH
+          echo "$PWD/gradle-2.14.1/bin" >> "$GITHUB_PATH"
 
       - name: Compilar APK
         working-directory: projeto/ValScreen
-        run: gradle assembleRelease --no-daemon
+        run: |
+          gradle assembleRelease --no-daemon
 
       - name: Guardar APK
         uses: actions/upload-artifact@v4
