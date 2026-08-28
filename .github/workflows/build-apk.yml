@@ -20,24 +20,30 @@ jobs:
           mkdir projeto
           unzip -o ValScreen.zip -d projeto
 
-          echo "Conteúdo do ZIP:"
+          echo "Arquivos encontrados:"
           find projeto -maxdepth 4 -type f | head -100
 
-      - name: Configurar Java 8
+      - name: Configurar Java 17 para Android SDK
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '8'
+          java-version: '17'
 
       - name: Configurar Android SDK
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@v4
 
       - name: Instalar SDK Android
         run: |
           yes | sdkmanager --licenses || true
           sdkmanager "platform-tools" "platforms;android-21" "build-tools;21.1.0"
 
-      - name: Instalar Gradle
+      - name: Configurar Java 8 para Gradle antigo
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '8'
+
+      - name: Instalar Gradle 2.14.1
         run: |
           wget -q https://services.gradle.org/distributions/gradle-2.14.1-bin.zip
           unzip -q gradle-2.14.1-bin.zip
@@ -53,6 +59,7 @@ jobs:
           fi
 
           PROJECT_DIR=$(dirname "$SETTINGS_FILE")
+
           echo "Projeto encontrado em: $PROJECT_DIR"
           echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
 
@@ -64,12 +71,11 @@ jobs:
       - name: Procurar APK
         run: |
           echo "APKs encontrados:"
-          find "$PROJECT_DIR" -type f -name "*.apk" -print
+          find projeto -type f -name "*.apk" -print
 
       - name: Guardar APK
         uses: actions/upload-artifact@v4
         with:
           name: VDesempenho-v1.0
-          path: |
-            projeto/**/*.apk
+          path: projeto/**/*.apk
           if-no-files-found: error
