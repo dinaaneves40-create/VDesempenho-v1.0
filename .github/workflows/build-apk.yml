@@ -1,0 +1,48 @@
+name: Gerar APK
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Baixar arquivos
+        uses: actions/checkout@v4
+
+      - name: Descompactar projeto
+        run: |
+          unzip -q ValScreen.zip -d projeto
+          echo "Conteúdo:"
+          find projeto -maxdepth 3 -type f | head -100
+
+      - name: Configurar Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '8'
+
+      - name: Configurar Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Instalar SDK Android
+        run: |
+          yes | sdkmanager --licenses || true
+          sdkmanager "platforms;android-21" "build-tools;21.1.0"
+
+      - name: Instalar Gradle
+        run: |
+          wget -q https://services.gradle.org/distributions/gradle-2.14.1-bin.zip
+          unzip -q gradle-2.14.1-bin.zip
+          echo "$PWD/gradle-2.14.1/bin" >> $GITHUB_PATH
+
+      - name: Compilar APK
+        working-directory: projeto/ValScreen
+        run: gradle assembleRelease --no-daemon
+
+      - name: Guardar APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: VDesempenho-v1.0
+          path: projeto/ValScreen/app/build/outputs/apk/release/*.apk
