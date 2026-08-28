@@ -1,69 +1,112 @@
 name: Gerar APK
 
 on:
-  push:
   workflow_dispatch:
+  push:
+    branches:
+      - main
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
+
       - name: Baixar projeto
         uses: actions/checkout@v4
 
-      - name: Descompactar ValScreen
+      # ---------------------------------------------------------
+      # Instala bibliotecas 32-bit necessárias para o AAPT antigo
+      # ---------------------------------------------------------
+      - name: Instalar dependências 32-bit
         run: |
-          unzip -q ValScreen.zip -d projeto
-          echo "Arquivos encontrados:"
-          find projeto -maxdepth 3 -type f | head -100
+          sudo dpkg --add-architecture i386
+          sudo apt-get update
+          sudo apt-get install -y \
+            libc6:i386 \
+            libstdc++6:i386 \
+            zlib1g:i386 \
+            unzip \
+            wget
 
-      # O Android SDK atual precisa de Java 17
-      - name: Configurar Java 17
+      # ---------------------------------------------------------
+      # Java 17 somente para executar o sdkmanager moderno
+      # ---------------------------------------------------------
+      - name: Configurar Java 17 temporariamente
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
 
+      # ---------------------------------------------------------
+      # Localizar Android SDK
+      # ---------------------------------------------------------
       - name: Configurar Android SDK
-        uses: android-actions/setup-android@v3
+        run: |
+          echo "ANDROID_SDK_ROOT=$ANDROID_HOME" >> $GITHUB_ENV
+          echo "ANDROID_HOME=$ANDROID_HOME" >> $GITHUB_ENV
+          echo "$ANDROID_HOME/cmdline-tools/latest/bin" >> $GITHUB_PATH
+          echo "$ANDROID_HOME/platform-tools" >> $GITHUB_PATH
+          echo "$ANDROID_HOME/build-tools/21.1.0" >> $GITHUB_PATH
 
-      - name: Instalar SDK Android
+      # ---------------------------------------------------------
+      # Instalar o SDK necessário para o projeto antigo
+      # ---------------------------------------------------------
+      - name: Instalar Android SDK
         run: |
           yes | sdkmanager --licenses || true
-          sdkmanager "platforms;android-21" "build-tools;21.1.0"
+          sdkmanager "platform-tools" "platforms;android-21" "build-tools;21.1.0"
 
-      # O projeto usa Gradle antigo, que funciona com Java 8
+      # ---------------------------------------------------------
+      # Agora SIM: Java 8 para o Gradle/projeto antigo
+      # ---------------------------------------------------------
       - name: Configurar Java 8
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '8'
 
+      - name: Verificar Java
+        run: |
+          java -version
+          echo "JAVA_HOME=$JAVA_HOME"
+          echo "ANDROID_HOME=$ANDROID_HOME"
+
+      # ---------------------------------------------------------
+      # Descompactar o projeto
+      # ---------------------------------------------------------
+      - name: Descompactar ValScreen
+        run: |
+          rm -rf projeto
+          mkdir projeto
+          unzip -q ValScreen.zip -d projeto
+
+          echo "Arquivos encontrados:"
+          find projeto -maxdepth 4 -type f | head -100
+
+      # ---------------------------------------------------------
+      # Instalar Gradle 2.14.1
+      # ---------------------------------------------------------
       - name: Instalar Gradle 2.14.1
         run: |
-          wget -q https://services.gradle.org/distributions/gradle-2.14.1-bin.zip
-          unzip -q gradle-2.14.1-bin.zip
-          echo "$PWD/gradle-2.14.1/bin" >> "$GITHUB_PATH"
+          cd "$RUNNER_TEMP"
 
+          wget -q https://services.gradle.org/distributions/gradle-2.14.1-bin.zip
+
+          rm -rf gradle-2.14.1
+          unzip -q gradle-2.14.1-bin.zip
+
+          echo "$RUNNER_TEMP/gradle-2.14.1/bin" >> $GITHUB_PATH
+
+      # ---------------------------------------------------------
+      # Conferir Gradle e Java
+      # ---------------------------------------------------------
       - name: Verificar Java e Gradle
         run: |
           java -version
           gradle --version
 
-      - name: Compilar APK
-        working-directory: projeto/ValScreen
-        run: |
-          gradle assembleRelease --no-daemon
-
-      - name: Procurar APK
-        run: |
-          echo "APKs encontrados:"
-          find projeto -type f -name "*.apk" -print
-
-      - name: Guardar APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: VDesempenho-v1.0
-          path: projeto/ValScreen/app/build/outputs/apk/release/*.apk
-          if-no-files-found: error
+      # ---------------------------------------------------------
+      # Compilar APK
+      # ---------------------------------------------------------
+      -
