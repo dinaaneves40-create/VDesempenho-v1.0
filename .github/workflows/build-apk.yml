@@ -1,166 +1,94 @@
-name: Build APK
+name: Gerar APK
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - main
-  workflow_dispatch:
 
 jobs:
   build:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-20.04
 
     steps:
-
-      # ==========================================
-      # 1. Baixar o projeto
-      # ==========================================
       - name: Baixar projeto
         uses: actions/checkout@v4
 
-      # ==========================================
-      # 2. Java 17
-      # Necessário para o sdkmanager moderno
-      # ==========================================
-      - name: Configurar Java 17
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '17'
-
-      - name: Verificar Java 17
-        run: |
-          java -version
-          javac -version
-
-      # ==========================================
-      # 3. Configurar Android SDK
-      # ==========================================
-      - name: Configurar Android SDK
-        uses: android-actions/setup-android@v3
-
-      # ==========================================
-      # 4. Instalar componentes do Android
-      # ==========================================
-      - name: Instalar Android SDK
-        shell: bash
-        run: |
-          yes | sdkmanager --licenses || true
-
-          sdkmanager \
-            "platform-tools" \
-            "platforms;android-23" \
-            "build-tools;21.1.0"
-
-      # ==========================================
-      # 5. Instalar dependências para aapt antigo
-      # ==========================================
-      - name: Instalar dependências do aapt
-        run: |
-          sudo dpkg --add-architecture i386
-          sudo apt-get update
-          sudo apt-get install -y \
-            libc6:i386 \
-            libstdc++6:i386 \
-            zlib1g:i386
-
-      # ==========================================
-      # 6. Extrair o projeto ValScreen
-      # ==========================================
-      - name: Descompactar ValScreen
-        run: |
-          mkdir -p projeto
-          unzip -o ValScreen.zip -d projeto
-
-          echo "Conteúdo:"
-          find projeto -maxdepth 3 -type f | head -100
-
-      # ==========================================
-      # 7. Configurar local.properties
-      # ==========================================
-      - name: Configurar local.properties
-        run: |
-          SDK_DIR="${ANDROID_SDK_ROOT:-$ANDROID_HOME}"
-          echo "sdk.dir=$SDK_DIR" > projeto/ValScreen/local.properties
-
-          echo "local.properties:"
-          cat projeto/ValScreen/local.properties
-
-      # ==========================================
-      # 8. Mudar para Java 8
-      # O projeto antigo precisa do Java 8
-      # ==========================================
       - name: Configurar Java 8
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '8'
 
-      - name: Verificar Java 8
+      - name: Instalar dependências
+        run: |
+          sudo dpkg --add-architecture i386
+          sudo apt-get update
+          sudo apt-get install -y \
+            unzip \
+            wget \
+            libc6:i386 \
+            libstdc++6:i386 \
+            zlib1g:i386
+
+      - name: Configurar Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Instalar SDK antigo
+        run: |
+          yes | sdkmanager --licenses || true
+          sdkmanager \
+            "platform-tools" \
+            "platforms;android-21" \
+            "build-tools;21.1.2"
+
+      - name: Extrair ValScreen
+        run: |
+          rm -rf projeto
+          mkdir projeto
+          unzip -q ValScreen.zip -d projeto
+
+      - name: Configurar SDK do projeto
+        run: |
+          echo "sdk.dir=$ANDROID_HOME" > projeto/ValScreen/local.properties
+
+      - name: Instalar Gradle 2.14.1
+        run: |
+          wget -q https://services.gradle.org/distributions/gradle-2.14.1-bin.zip
+          unzip -q gradle-2.14.1-bin.zip
+          echo "$PWD/gradle-2.14.1/bin" >> "$GITHUB_PATH"
+
+      - name: Verificar ambiente
         run: |
           java -version
-          javac -version
+          gradle --version
 
-      # ==========================================
-      # 9. Verificar Gradle
-      # ==========================================
-      - name: Verificar Gradle
-        working-directory: projeto/ValScreen
-        run: |
-          chmod +x gradlew || true
-
-          if [ -f "./gradlew" ]; then
-            ./gradlew --version
-          else
-            gradle --version
-          fi
-
-      # ==========================================
-      # 10. Compilar APK
-      # ==========================================
       - name: Compilar APK
         working-directory: projeto/ValScreen
         run: |
-          chmod +x gradlew || true
+          gradle clean assembleRelease --no-daemon --stacktrace
 
-          if [ -f "./gradlew" ]; then
-            ./gradlew assembleRelease --no-daemon --stacktrace
-          else
-            gradle assembleRelease --no-daemon --stacktrace
+      - name: Encontrar APK
+        run: |
+          mkdir -p apk-final
+
+          APK=$(find projeto/ValScreen \
+            -type f \
+            -name "*.apk" \
+            -print -quit)
+
+          if [ -z "$APK" ]; then
+            echo "APK não foi encontrado."
+            exit 1
           fi
 
-      # ==========================================
-      # 11. Procurar APK
-      # ==========================================
-      - name: Procurar APK
-        run: |
-          echo "Procurando APK..."
+          cp "$APK" apk-final/VDesempenho-v1.0.apk
 
-          find projeto/ValScreen \
-            -type f \
-            \( -name "*.apk" -o -name "*.aab" \) \
-            -print
+          ls -lh apk-final/VDesempenho-v1.0.apk
 
-      # ==========================================
-      # 12. Guardar APK
-      # ==========================================
       - name: Guardar APK
         uses: actions/upload-artifact@v4
         with:
-          name: VDesempenho-APK
-          path: |
-            projeto/ValScreen/**/*.apk
+          name: VDesempenho-v1.0
+          path: apk-final/VDesempenho-v1.0.apk
           if-no-files-found: error
-
-      # ==========================================
-      # 13. Finalizado
-      # ==========================================
-      - name: Finalizado
-        run: |
-          echo "===================================="
-          echo "APK GERADO COM SUCESSO!"
-          echo "===================================="
-          find projeto/ValScreen \
-            -type f \
-            -name "*.apk" \
-            -print
